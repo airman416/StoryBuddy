@@ -46,10 +46,13 @@
 
         <div class="progress-controls" id="progressControls" style="display: none;">
             <div class="progress-indicator" id="progressIndicator">Ready to read! 📖</div>
-            <button id="playBtn" onclick="playStory()">🎵 Play Story</button>
-            <button id="pauseBtn" onclick="pauseStory()" style="display: none;">⏸️ Pause</button>
-            <button id="nextBtn" onclick="nextWords()" class="next-button" style="display: none;">Next 5 Words ➡️</button>
-            <button id="replayBtn" onclick="replayWords()" class="replay-button" style="display: none;">🔄 Replay</button>
+            <div class="main-controls">
+                <button id="prevBtn" onclick="previousWords()" class="prev-button">⬅️ Previous</button>
+                <button id="playBtn" onclick="playStory()">🎵 Play</button>
+                <button id="pauseBtn" onclick="pauseStory()" style="display: none;">⏸️ Stop</button>
+                <button id="replayBtn" onclick="replayWords()" class="replay-button">🔄 Replay</button>
+                <button id="nextBtn" onclick="nextWords()" class="next-button">Next ➡️</button>
+            </div>
         </div>
 
         <div class="audio-controls" id="audioControls" style="display: none;">
@@ -320,7 +323,8 @@
             isPlaying = true;
             isPlayingWordByWord = true;
             
-            // Show Next and Replay buttons during playback
+            // Show all navigation buttons during playback
+            document.getElementById('prevBtn').style.display = 'inline-block';
             document.getElementById('nextBtn').style.display = 'inline-block';
             document.getElementById('replayBtn').style.display = 'inline-block';
             
@@ -487,7 +491,8 @@
             // Update current window start to the current 5-word set
             currentWindowStart = Math.floor(currentWordIndex / 5) * 5;
             
-            // Show Next and Replay buttons (keep them visible)
+            // Show all buttons (keep them visible)
+            document.getElementById('prevBtn').style.display = 'inline-block';
             document.getElementById('nextBtn').style.display = 'inline-block';
             document.getElementById('replayBtn').style.display = 'inline-block';
             document.getElementById('playBtn').style.display = 'inline-block';
@@ -619,6 +624,52 @@
             }
         }
 
+        // Previous 5 words function
+        function previousWords() {
+            // Stop any current playback completely
+            if (isPlaying) {
+                isPlaying = false;
+                isPlayingWordByWord = false;
+                
+                // Stop any currently playing audio
+                if (currentAudioElement && !currentAudioElement.paused) {
+                    currentAudioElement.pause();
+                    currentAudioElement.currentTime = 0;
+                }
+                
+                // Clear any pending timeouts
+                if (wordHighlightInterval) {
+                    clearInterval(wordHighlightInterval);
+                    wordHighlightInterval = null;
+                }
+            }
+            
+            // Calculate the previous 5-word set
+            const prevSetStart = Math.floor(currentWordIndex / 5) * 5 - 5;
+            
+            if (prevSetStart < 0) {
+                showFeedback('Already at the beginning! 🎯', 'success');
+                return;
+            }
+            
+            // Go back to the previous 5-word set
+            currentWordIndex = prevSetStart;
+            wordsInCurrentWindow = 0;
+            isWindowComplete = false;
+            
+            // Show all buttons (keep them visible)
+            document.getElementById('nextBtn').style.display = 'inline-block';
+            document.getElementById('replayBtn').style.display = 'inline-block';
+            document.getElementById('playBtn').style.display = 'inline-block';
+            document.getElementById('pauseBtn').style.display = 'none';
+            
+            // Update word window to show previous 5 words
+            updateWordWindowForIndex(currentWordIndex);
+            
+            // Start playing the previous 5 words
+            playStory();
+        }
+
         // Next 5 words function
         function nextWords() {
             // Stop any current playback completely
@@ -652,9 +703,9 @@
             wordsInCurrentWindow = 0;
             isWindowComplete = false;
             
-            // Hide Next and Replay buttons, show Play button
-            document.getElementById('nextBtn').style.display = 'none';
-            document.getElementById('replayBtn').style.display = 'none';
+            // Show all buttons (keep them visible)
+            document.getElementById('nextBtn').style.display = 'inline-block';
+            document.getElementById('replayBtn').style.display = 'inline-block';
             document.getElementById('playBtn').style.display = 'inline-block';
             document.getElementById('pauseBtn').style.display = 'none';
             
@@ -696,9 +747,9 @@
             wordsInCurrentWindow = 0;
             isWindowComplete = false;
             
-            // Hide Next and Replay buttons, show Play button
-            document.getElementById('nextBtn').style.display = 'none';
-            document.getElementById('replayBtn').style.display = 'none';
+            // Show all buttons (keep them visible)
+            document.getElementById('nextBtn').style.display = 'inline-block';
+            document.getElementById('replayBtn').style.display = 'inline-block';
             document.getElementById('playBtn').style.display = 'inline-block';
             document.getElementById('pauseBtn').style.display = 'none';
             
