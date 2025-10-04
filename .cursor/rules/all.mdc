@@ -1,0 +1,10 @@
+---
+alwaysApply: true
+---
+
+Do not make an .env file.
+Make all the code very simple and only work as a Minimum Presentable Product.
+This whole project is only for a hackathon and should take 30 minutes of development max.
+Do not couple segments, each should be manually testable. Do not use a testing library.
+Make sure to follow the latest documentation for any APIs used.
+Do not test the implementation by running the server to make sure everything works. I will do that.

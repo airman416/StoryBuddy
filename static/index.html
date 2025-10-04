@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Story Buddy - AI Reading Companion</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌟 Story Magic 🌟</h1>
+            <p>Let's read together and have fun! 🎉</p>
+        </div>
+
+        <div class="controls">
+            <div class="input-group">
+                <label for="storyPrompt">Story Idea:</label>
+                <input type="text" id="storyPrompt" placeholder="A brave little mouse..." value="A curious cat exploring a magical garden">
+            </div>
+            
+            <div class="input-group">
+                <label for="ageGroup">Age Group:</label>
+                <select id="ageGroup">
+                    <option value="4-6">4-6 years</option>
+                    <option value="6-8" selected>6-8 years</option>
+                    <option value="8-10">8-10 years</option>
+                </select>
+            </div>
+            
+            <button id="generateBtn" onclick="generateStory()">✨ Create Story</button>
+        </div>
+
+        <div class="story-container">
+            <div id="wordWindow" class="word-window">
+                <div id="word1" class="word-slot"></div>
+                <div id="word2" class="word-slot"></div>
+                <div id="word3" class="word-slot current-word"></div>
+                <div id="word4" class="word-slot"></div>
+                <div id="word5" class="word-slot"></div>
+            </div>
+            <div id="storyText" class="story-text" style="display: none;">
+                <!-- Hidden full story for reference -->
+            </div>
+        </div>
+
+        <div class="progress-controls" id="progressControls" style="display: none;">
+            <div class="progress-indicator" id="progressIndicator">Ready to read! 📖</div>
+            <button id="playBtn" onclick="playStory()">🎵 Play Story</button>
+            <button id="pauseBtn" onclick="pauseStory()" style="display: none;">⏸️ Pause</button>
+            <button id="nextBtn" onclick="nextWords()" class="next-button" style="display: none;">Next 5 Words ➡️</button>
+            <button id="replayBtn" onclick="replayWords()" class="replay-button" style="display: none;">🔄 Replay</button>
+        </div>
+
+        <div class="audio-controls" id="audioControls" style="display: none;">
+            <button id="readAlongBtn" onclick="startReadAlong()" class="mic-button">🎤 Read Along</button>
+        </div>
+
+        <div id="feedback"></div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentStory = '';
+        let currentWords = [];
+        let wordTimings = [];
+        let currentAudioElement = null;
+        let isListening = false;
+        let recognition = null;
+        let audioContext = null;
+        let audioBuffer = null;
+        let isStreaming = false;
+        let currentWordIndex = 0;
+        let isPlaying = false;
+        let wordHighlightInterval = null;
+        let wordAudioList = [];  // For word-by-word audio
+        let isPlayingWordByWord = false;
+        let wordWindowStart = 0;  // Starting index for 5-word window
+        let isGenerating = false;  // Track if story is being generated
+        let generationStream = null;  // For streaming story generation
+        let currentWindowStart = 0;  // Current 5-word window start index
+        let wordsInCurrentWindow = 0;  // Number of words played in current window
+        let isWindowComplete = false;  // Track if current 5-word window is complete
+        let currentAudioElementElement = null;  // Track current playing audio element
+
+        // Initialize Web Audio API
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // Initialize speech recognition
+        function initSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+                
+                recognition.onresult = function(event) {
+                    const spokenText = event.results[0][0].transcript;
+                    evaluateReading(spokenText);
+                };
+                
+                recognition.onerror = function(event) {
+                    showFeedback('Sorry, I couldn\'t hear you clearly. Try again!', 'error');
+                    stopListening();
+                };
+                
+                recognition.onend = function() {
+                    stopListening();
+                };
+            }
+        }
+
+        // Generate story using backend API with async streaming
+        async function generateStory() {
+            const prompt = document.getElementById('storyPrompt').value;
+            const ageGroup = document.getElementById('ageGroup').value;
+            const generateBtn = document.getElementById('generateBtn');
+            const wordWindow = document.getElementById('wordWindow');
+
+            if (!prompt.trim()) {
+                showFeedback('Please enter a story idea!', 'error');
+                return;
+            }
+
+            if (isGenerating) {
+                showFeedback('Already generating a story! Please wait...', 'error');
+                return;
+            }
+
+            isGenerating = true;
+            generateBtn.disabled = true;
+            generateBtn.textContent = '✨ Creating...';
+            
+            // Clear previous story
+            currentStory = '';
+            currentWords = [];
+            wordWindowStart = 0;
+            currentWordIndex = 0;
+            wordsInCurrentWindow = 0;
+            currentWindowStart = 0;
+            isWindowComplete = false;
+            
+            // Show loading state in word window
+            updateWordWindow(['✨', 'Creating', 'your', 'magical', 'story...']);
+
+            try {
+                const response = await fetch('/api/generate-story', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        age_group: ageGroup
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                currentStory = data.story;
+                
+                // Split story into words
+                currentWords = currentStory.split(/\s+/).filter(word => word.length > 0);
+                
+                // Show first 5 words in window
+                updateWordWindow(currentWords.slice(0, 5));
+                
+                // Start generating audio immediately
+                startAsyncAudioGeneration();
+                
+                document.getElementById('progressControls').style.display = 'flex';
+                document.getElementById('audioControls').style.display = 'flex';
+                showFeedback('Story created! Starting audio generation... 🎉', 'success');
+
+            } catch (error) {
+                console.error('Error generating story:', error);
+                updateWordWindow(['Sorry', 'couldn\'t', 'create', 'story', 'now']);
+                showFeedback('Error creating story. Please check your connection and try again.', 'error');
+            }
+
+            isGenerating = false;
+            generateBtn.disabled = false;
+            generateBtn.textContent = '✨ Create Story';
+        }
+
+        // Update the 5-word window display
+        function updateWordWindow(words) {
+            for (let i = 1; i <= 5; i++) {
+                const slot = document.getElementById(`word${i}`);
+                if (words[i - 1]) {
+                    slot.textContent = words[i - 1];
+                    slot.style.display = 'flex';
+                } else {
+                    slot.textContent = '';
+                    slot.style.display = 'none';
+                }
+            }
+        }
+
+        // Update word window based on current word index within the current 5-word set
+        function updateWordWindowForIndex(wordIndex) {
+            // Calculate which 5-word set we're in
+            const windowSet = Math.floor(wordIndex / 5);
+            const startIndex = windowSet * 5;
+            const endIndex = Math.min(currentWords.length, startIndex + 5);
+            const windowWords = currentWords.slice(startIndex, endIndex);
+            
+            // Pad with empty strings if needed
+            while (windowWords.length < 5) {
+                windowWords.push('');
+            }
+            
+            updateWordWindow(windowWords);
+            wordWindowStart = startIndex;
+            
+            // Highlight the current word within this 5-word set
+            const currentSlotIndex = (wordIndex % 5) + 1;
+            highlightWordInWindow(currentSlotIndex);
+        }
+
+        // Highlight a specific word in the window
+        function highlightWordInWindow(slotIndex) {
+            // Remove all highlights
+            for (let i = 1; i <= 5; i++) {
+                const slot = document.getElementById(`word${i}`);
+                slot.classList.remove('current-word', 'highlight');
+            }
+            
+            // Add highlight to current word
+            if (slotIndex >= 1 && slotIndex <= 5) {
+                const slot = document.getElementById(`word${slotIndex}`);
+                slot.classList.add('highlight');
+            }
+        }
+
+        // Start async audio generation
+        async function startAsyncAudioGeneration() {
+            try {
+                showFeedback('🎵 Generating audio... This will start playing soon!', 'success');
+                
+                // Get word-by-word audio
+                const response = await fetch('/api/text-to-speech-word-by-word', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: currentStory
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Word-by-word TTS API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                wordAudioList = data.word_audio_list;
+                
+                showFeedback(`🎵 Audio ready! ${wordAudioList.length} words generated!`, 'success');
+                
+                // Auto-start playback
+                playStory();
+
+            } catch (error) {
+                console.error('Error generating audio:', error);
+                showFeedback('Error generating audio. Please try again.', 'error');
+            }
+        }
+
+        // Create word elements for highlighting
+        function createWordElements(text) {
+            const storyText = document.getElementById('storyText');
+            const words = text.split(/\s+/).filter(word => word.length > 0);
+            currentWords = words;
+            
+            storyText.innerHTML = '';
+            words.forEach((word, index) => {
+                const wordElement = document.createElement('span');
+                wordElement.className = 'word';
+                wordElement.textContent = word;
+                wordElement.id = `word-${index}`;
+                storyText.appendChild(wordElement);
+            });
+        }
+
+        // Convert text to speech with word-by-word audio
+        async function playStory() {
+            if (!currentStory) {
+                showFeedback('Please generate a story first!', 'error');
+                return;
+            }
+
+            const playBtn = document.getElementById('playBtn');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const progressIndicator = document.getElementById('progressIndicator');
+
+            // If already playing word by word and paused, resume
+            if (isPlayingWordByWord && currentWordIndex < wordAudioList.length) {
+                playBtn.style.display = 'none';
+                pauseBtn.style.display = 'inline-block';
+                isPlaying = true;
+                isPlayingWordByWord = true;
+                
+                await playNextWord();
+                showFeedback('🎵 Resuming word-by-word story!', 'success');
+                return;
+            }
+
+            // Start new word-by-word playback
+            playBtn.style.display = 'none';
+            pauseBtn.style.display = 'inline-block';
+            isPlaying = true;
+            isPlayingWordByWord = true;
+            
+            // Show Next and Replay buttons during playback
+            document.getElementById('nextBtn').style.display = 'inline-block';
+            document.getElementById('replayBtn').style.display = 'inline-block';
+            
+            // Only reset if we're starting from the beginning
+            if (currentWordIndex === 0) {
+                wordsInCurrentWindow = 0;
+                currentWindowStart = 0;
+                isWindowComplete = false;
+            }
+            
+            // Update word window for current word
+            updateWordWindowForIndex(currentWordIndex);
+
+            try {
+                // If audio is already generated, start playing
+                if (wordAudioList.length > 0) {
+                    showFeedback(`🎵 Starting playback of ${wordAudioList.length} words!`, 'success');
+                    await playNextWord();
+                } else {
+                    // Generate audio first
+                    const response = await fetch('/api/text-to-speech-word-by-word', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            text: currentStory
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Word-by-word TTS API error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    wordAudioList = data.word_audio_list;
+                    
+                    showFeedback(`🎵 Generated ${wordAudioList.length} word audio files! Starting playback...`, 'success');
+                    
+                    // Start playing first word
+                    await playNextWord();
+                }
+
+            } catch (error) {
+                console.error('Error playing story word by word:', error);
+                playBtn.style.display = 'inline-block';
+                pauseBtn.style.display = 'none';
+                isPlaying = false;
+                isPlayingWordByWord = false;
+                showFeedback('Error generating word-by-word audio. Please try again.', 'error');
+            }
+        }
+
+        // Play the next word in the sequence
+        async function playNextWord() {
+            if (!isPlaying || currentWordIndex >= wordAudioList.length) {
+                // Story finished
+                document.getElementById('playBtn').style.display = 'inline-block';
+                document.getElementById('pauseBtn').style.display = 'none';
+                isPlaying = false;
+                isPlayingWordByWord = false;
+                document.getElementById('progressIndicator').textContent = 'Story finished! Great job! 🎉';
+                showFeedback('Story finished! Want to try reading it yourself? 📖', 'success');
+                return;
+            }
+
+            const wordData = wordAudioList[currentWordIndex];
+            const progressIndicator = document.getElementById('progressIndicator');
+
+            // Update word window to show current word
+            updateWordWindowForIndex(currentWordIndex);
+            progressIndicator.textContent = `Reading word ${currentWordIndex + 1} of ${wordAudioList.length} 📖`;
+
+            // Check if this is an emoji (skip audio)
+            if (wordData.is_emoji || !wordData.audio) {
+                console.log(`Skipping emoji: ${wordData.word}`);
+                
+                // Just show the emoji visually and move to next word
+                setTimeout(() => {
+                    currentWordIndex++;
+                    wordsInCurrentWindow++;
+                    
+                    // Check if we've completed the current 5-word window
+                    if (wordsInCurrentWindow >= 5 || currentWordIndex >= wordAudioList.length) {
+                        completeCurrentWindow();
+                    } else if (isPlaying && currentWordIndex < wordAudioList.length) {
+                        playNextWord();
+                    }
+                }, 300); // Short pause for emojis
+                return;
+            }
+
+            try {
+                // Stop any currently playing audio
+                if (currentAudioElementElement && !currentAudioElementElement.paused) {
+                    currentAudioElementElement.pause();
+                    currentAudioElementElement.currentTime = 0;
+                }
+                
+                // Create audio element for this word
+                const audioBlob = new Blob([Uint8Array.from(atob(wordData.audio), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const wordAudio = new Audio(audioUrl);
+                
+                // Track current audio element
+                currentAudioElementElement = wordAudio;
+                
+                // Play the word
+                await wordAudio.play();
+                
+                // Wait for audio to finish
+                await new Promise((resolve) => {
+                    wordAudio.onended = resolve;
+                    wordAudio.onerror = resolve;
+                });
+                
+                // Clean up
+                URL.revokeObjectURL(audioUrl);
+                currentAudioElementElement = null;
+                
+                // Calculate pause duration based on punctuation
+                let pauseDuration = 200; // Default pause
+                const word = wordData.word;
+                
+                if (word.endsWith('.') || word.endsWith('!') || word.endsWith('?')) {
+                    pauseDuration = 800; // Longer pause for sentence endings
+                } else if (word.endsWith(',') || word.endsWith(';') || word.endsWith(':')) {
+                    pauseDuration = 400; // Medium pause for commas
+                }
+                
+                // Move to next word after pause
+                setTimeout(() => {
+                    currentWordIndex++;
+                    wordsInCurrentWindow++;
+                    
+                    // Check if we've completed the current 5-word window
+                    if (wordsInCurrentWindow >= 5 || currentWordIndex >= wordAudioList.length) {
+                        completeCurrentWindow();
+                    } else if (isPlaying && currentWordIndex < wordAudioList.length) {
+                        playNextWord();
+                    }
+                }, pauseDuration);
+
+            } catch (error) {
+                console.error(`Error playing word ${currentWordIndex}:`, error);
+                // Continue to next word even if this one fails
+                currentWordIndex++;
+                wordsInCurrentWindow++;
+                
+                if (wordsInCurrentWindow >= 5 || currentWordIndex >= wordAudioList.length) {
+                    completeCurrentWindow();
+                } else if (isPlaying && currentWordIndex < wordAudioList.length) {
+                    playNextWord();
+                }
+            }
+        }
+
+        // Complete the current 5-word window
+        function completeCurrentWindow() {
+            isWindowComplete = true;
+            isPlaying = false;
+            isPlayingWordByWord = false;
+            
+            // Update current window start to the current 5-word set
+            currentWindowStart = Math.floor(currentWordIndex / 5) * 5;
+            
+            // Show Next and Replay buttons (keep them visible)
+            document.getElementById('nextBtn').style.display = 'inline-block';
+            document.getElementById('replayBtn').style.display = 'inline-block';
+            document.getElementById('playBtn').style.display = 'inline-block';
+            document.getElementById('pauseBtn').style.display = 'none';
+            
+            // Update progress indicator
+            const remainingWords = wordAudioList.length - currentWordIndex;
+            const currentSet = Math.floor(currentWordIndex / 5) + 1;
+            const totalSets = Math.ceil(wordAudioList.length / 5);
+            
+            if (remainingWords > 0) {
+                document.getElementById('progressIndicator').textContent = `Set ${currentSet}/${totalSets} complete! ${remainingWords} words remaining. Click Next or Replay! 🎯`;
+            } else {
+                document.getElementById('progressIndicator').textContent = 'All words complete! Great job! 🎉';
+                document.getElementById('nextBtn').style.display = 'none';
+            }
+            
+            showFeedback(`Set ${currentSet} complete! Click Next for set ${currentSet + 1} or Replay to hear set ${currentSet} again! 🎉`, 'success');
+        }
+
+        // Process timing data from ElevenLabs
+        function processTimingData(data) {
+            // Use the estimated word timings from our backend
+            wordTimings = data.word_timings || [];
+            console.log('Processed word timings:', wordTimings);
+            console.log('Number of words:', currentWords.length);
+            console.log('Number of timings:', wordTimings.length);
+        }
+
+        // Reset word highlighting
+        function resetWordHighlighting() {
+            // Remove all current and read classes from hidden word elements
+            for (let i = 0; i < currentWords.length; i++) {
+                const wordElement = document.getElementById(`word-${i}`);
+                if (wordElement) {
+                    wordElement.classList.remove('current', 'read');
+                }
+            }
+            currentWordIndex = 0;
+            
+            // Reset current word display to show first word
+            if (currentWords.length > 0) {
+                document.getElementById('currentWord').textContent = currentWords[0];
+                document.getElementById('currentWord').classList.remove('highlight');
+            }
+        }
+
+        // Start word highlighting based on audio timing
+        function startWordHighlighting() {
+            if (wordHighlightInterval) {
+                clearInterval(wordHighlightInterval);
+            }
+            
+            console.log('Starting word highlighting with', wordTimings.length, 'word timings');
+            
+            wordHighlightInterval = setInterval(() => {
+                if (!isPlaying || !currentAudioElement) {
+                    clearInterval(wordHighlightInterval);
+                    return;
+                }
+                
+                const currentTime = currentAudioElement.currentTime * 1000; // Convert to milliseconds
+                const progressIndicator = document.getElementById('progressIndicator');
+                
+                // Find current word based on timing
+                let currentWord = null;
+                for (let i = 0; i < wordTimings.length; i++) {
+                    if (currentTime >= wordTimings[i].start_time && currentTime <= wordTimings[i].end_time) {
+                        currentWord = wordTimings[i];
+                        break;
+                    }
+                }
+                
+                if (currentWord && currentWord.index !== currentWordIndex) {
+                    console.log('Highlighting word:', currentWord.word, 'at index:', currentWord.index);
+                    
+                    // Update current word display
+                    const currentWordDisplay = document.getElementById('currentWord');
+                    currentWordDisplay.textContent = currentWord.word;
+                    currentWordDisplay.classList.add('highlight');
+                    
+                    // Remove highlight class after animation
+                    setTimeout(() => {
+                        currentWordDisplay.classList.remove('highlight');
+                    }, 800);
+                    
+                    // Remove previous highlight from hidden word elements
+                    if (currentWordIndex < currentWords.length) {
+                        const prevWordElement = document.getElementById(`word-${currentWordIndex}`);
+                        if (prevWordElement) {
+                            prevWordElement.classList.remove('current');
+                            prevWordElement.classList.add('read');
+                        }
+                    }
+                    
+                    // Add current highlight to hidden word elements
+                    currentWordIndex = currentWord.index;
+                    if (currentWordIndex < currentWords.length) {
+                        const wordElement = document.getElementById(`word-${currentWordIndex}`);
+                        if (wordElement) {
+                            wordElement.classList.add('current');
+                        } else {
+                            console.error('Word element not found for index:', currentWordIndex);
+                        }
+                    }
+                    
+                    progressIndicator.textContent = `Reading word ${currentWordIndex + 1} of ${currentWords.length} 📖`;
+                }
+            }, 50); // Check every 50ms for smooth highlighting
+        }
+
+        // Pause audio playback
+        function pauseStory() {
+            if (isPlaying) {
+                isPlaying = false;
+                if (isPlayingWordByWord) {
+                    // Word-by-word playback is paused
+                    document.getElementById('playBtn').style.display = 'inline-block';
+                    document.getElementById('pauseBtn').style.display = 'none';
+                    showFeedback('Word-by-word playback paused. Click play to resume! ⏸️', 'success');
+                } else if (currentAudioElement && !currentAudioElement.paused) {
+                    // Regular audio playback
+                    currentAudioElement.pause();
+                    clearInterval(wordHighlightInterval);
+                    document.getElementById('playBtn').style.display = 'inline-block';
+                    document.getElementById('pauseBtn').style.display = 'none';
+                    showFeedback('Audio paused. Click play to resume from where you stopped! ⏸️', 'success');
+                }
+            }
+        }
+
+        // Next 5 words function
+        function nextWords() {
+            // Stop any current playback completely
+            if (isPlaying) {
+                isPlaying = false;
+                isPlayingWordByWord = false;
+                
+                // Stop any currently playing audio
+                if (currentAudioElement && !currentAudioElement.paused) {
+                    currentAudioElement.pause();
+                    currentAudioElement.currentTime = 0;
+                }
+                
+                // Clear any pending timeouts
+                if (wordHighlightInterval) {
+                    clearInterval(wordHighlightInterval);
+                    wordHighlightInterval = null;
+                }
+            }
+            
+            // Calculate the next 5-word set
+            const nextSetStart = Math.floor(currentWordIndex / 5) * 5 + 5;
+            
+            if (nextSetStart >= wordAudioList.length) {
+                showFeedback('No more words! Story is complete! 🎉', 'success');
+                return;
+            }
+            
+            // Advance to the next 5-word set
+            currentWordIndex = nextSetStart;
+            wordsInCurrentWindow = 0;
+            isWindowComplete = false;
+            
+            // Hide Next and Replay buttons, show Play button
+            document.getElementById('nextBtn').style.display = 'none';
+            document.getElementById('replayBtn').style.display = 'none';
+            document.getElementById('playBtn').style.display = 'inline-block';
+            document.getElementById('pauseBtn').style.display = 'none';
+            
+            // Update word window to show next 5 words
+            updateWordWindowForIndex(currentWordIndex);
+            
+            // Start playing the next 5 words
+            playStory();
+        }
+
+        // Replay current 5 words function
+        function replayWords() {
+            // Stop any current playback completely
+            if (isPlaying) {
+                isPlaying = false;
+                isPlayingWordByWord = false;
+                
+                // Stop any currently playing audio
+                if (currentAudioElement && !currentAudioElement.paused) {
+                    currentAudioElement.pause();
+                    currentAudioElement.currentTime = 0;
+                }
+                
+                // Clear any pending timeouts
+                if (wordHighlightInterval) {
+                    clearInterval(wordHighlightInterval);
+                    wordHighlightInterval = null;
+                }
+            }
+            
+            if (currentWindowStart >= wordAudioList.length) {
+                showFeedback('No words to replay!', 'error');
+                return;
+            }
+            
+            // Reset to start of current 5-word set
+            const currentSet = Math.floor(currentWordIndex / 5);
+            currentWordIndex = currentSet * 5;
+            wordsInCurrentWindow = 0;
+            isWindowComplete = false;
+            
+            // Hide Next and Replay buttons, show Play button
+            document.getElementById('nextBtn').style.display = 'none';
+            document.getElementById('replayBtn').style.display = 'none';
+            document.getElementById('playBtn').style.display = 'inline-block';
+            document.getElementById('pauseBtn').style.display = 'none';
+            
+            // Update word window to show current 5 words
+            updateWordWindowForIndex(currentWordIndex);
+            
+            // Start playing the current 5 words again
+            playStory();
+        }
+
+        // Start read-along mode
+        function startReadAlong() {
+            if (!currentStory) {
+                showFeedback('Please generate a story first!', 'error');
+                return;
+            }
+
+            if (!recognition) {
+                showFeedback('Speech recognition not supported in your browser.', 'error');
+                return;
+            }
+
+            if (isListening) {
+                stopListening();
+                return;
+            }
+
+            isListening = true;
+            const readAlongBtn = document.getElementById('readAlongBtn');
+            readAlongBtn.textContent = '🛑 Stop Listening';
+            readAlongBtn.classList.add('listening');
+
+            showFeedback('I\'m listening! Read the story out loud. 👂', 'success');
+
+            try {
+                recognition.start();
+            } catch (error) {
+                console.error('Speech recognition error:', error);
+                stopListening();
+                showFeedback('Error starting speech recognition. Please try again.', 'error');
+            }
+        }
+
+        // Stop listening
+        function stopListening() {
+            isListening = false;
+            const readAlongBtn = document.getElementById('readAlongBtn');
+            readAlongBtn.textContent = '🎤 Read Along';
+            readAlongBtn.classList.remove('listening');
+
+            if (recognition) {
+                recognition.stop();
+            }
+        }
+
+        // Evaluate reading using backend API
+        async function evaluateReading(spokenText) {
+            try {
+                const response = await fetch('/api/evaluate-reading', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        original_story: currentStory,
+                        spoken_text: spokenText
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Evaluation API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                showFeedback(data.feedback, 'success');
+
+            } catch (error) {
+                console.error('Error evaluating reading:', error);
+                showFeedback('Great job reading! Keep practicing! 🌟', 'success');
+            }
+        }
+
+        // Show feedback to user
+        function showFeedback(message, type) {
+            const feedback = document.getElementById('feedback');
+            feedback.textContent = message;
+            feedback.className = `feedback ${type}`;
+            
+            setTimeout(() => {
+                feedback.textContent = '';
+                feedback.className = '';
+            }, 5000);
+        }
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function() {
+            initAudioContext();
+            initSpeechRecognition();
+            
+            // Allow Enter key to generate story
+            document.getElementById('storyPrompt').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    generateStory();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
