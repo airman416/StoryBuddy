@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 import logging
 import base64
+import json
+import asyncio
 from dotenv import load_dotenv
 from gemini_service import GeminiService
 from elevenlabs_service import ElevenLabsService
@@ -162,6 +164,125 @@ async def evaluate_reading(request: ReadingEvalRequest):
         logger.error(f"Error evaluating reading: {str(e)}")
         # Fallback to positive message if API fails
         return {"feedback": "Great job reading! Keep practicing! 🌟"}
+
+@app.websocket("/ws/stream-words")
+async def websocket_stream_words(websocket: WebSocket):
+    """WebSocket endpoint for streaming word-by-word audio generation"""
+    await websocket.accept()
+    logger.info("WebSocket connection established for streaming words")
+    
+    try:
+        while True:
+            # Wait for client to send story text
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            
+            if message.get("type") == "generate_story":
+                story_text = message.get("text", "")
+                if not story_text:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": "No story text provided"
+                    }))
+                    continue
+                
+                logger.info(f"Starting streaming word generation for story: {story_text[:100]}...")
+                
+                # Send start message
+                await websocket.send_text(json.dumps({
+                    "type": "generation_started",
+                    "total_words": len(story_text.split())
+                }))
+                
+                # Generate words one by one and stream them
+                words = story_text.split()
+                for i, word in enumerate(words):
+                    try:
+                        # Check if word is emoji (skip audio generation)
+                        if elevenlabs_service._is_emoji(word):
+                            await websocket.send_text(json.dumps({
+                                "type": "word_ready",
+                                "word": word,
+                                "index": i,
+                                "audio": None,
+                                "is_emoji": True,
+                                "cached": False
+                            }))
+                            continue
+                        
+                        # Check cache first
+                        cached_audio = None
+                        is_cached = False
+                        if elevenlabs_service._is_word_cached(word):
+                            cached_audio = elevenlabs_service._load_word_from_cache(word)
+                            is_cached = True
+                        
+                        if cached_audio:
+                            # Send cached word
+                            audio_base64 = base64.b64encode(cached_audio).decode('utf-8')
+                            await websocket.send_text(json.dumps({
+                                "type": "word_ready",
+                                "word": word,
+                                "index": i,
+                                "audio": audio_base64,
+                                "is_emoji": False,
+                                "cached": True
+                            }))
+                        else:
+                            # Generate new audio for word
+                            audio_data = await elevenlabs_service._generate_word_audio(word)
+                            
+                            # Save to cache if in debug mode
+                            if elevenlabs_service.debug_mode:
+                                elevenlabs_service._save_word_to_cache(word, audio_data)
+                            
+                            # Convert to base64 and send
+                            audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+                            await websocket.send_text(json.dumps({
+                                "type": "word_ready",
+                                "word": word,
+                                "index": i,
+                                "audio": audio_base64,
+                                "is_emoji": False,
+                                "cached": False
+                            }))
+                        
+                        # Small delay between words to prevent overwhelming the client
+                        await asyncio.sleep(0.1)
+                        
+                    except Exception as e:
+                        logger.error(f"Error generating word '{word}': {str(e)}")
+                        # Send error word but continue
+                        await websocket.send_text(json.dumps({
+                            "type": "word_error",
+                            "word": word,
+                            "index": i,
+                            "error": str(e)
+                        }))
+                
+                # Send completion message
+                await websocket.send_text(json.dumps({
+                    "type": "generation_complete",
+                    "total_words": len(words)
+                }))
+                
+            elif message.get("type") == "ping":
+                # Handle ping for connection health
+                await websocket.send_text(json.dumps({
+                    "type": "pong"
+                }))
+                
+    except WebSocketDisconnect:
+        logger.info("WebSocket connection disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {str(e)}")
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": f"Server error: {str(e)}"
+            }))
+        except:
+            pass
 
 if __name__ == "__main__":
     import uvicorn

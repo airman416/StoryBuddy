@@ -96,12 +96,17 @@ body::before {
     gap: 5px;
 }
 
+.story-input-group {
+    flex: 2;
+    min-width: 400px;
+}
+
 .input-group label {
     font-weight: bold;
     color: #555;
 }
 
-input, select, button {
+input, select, button, textarea {
     padding: 15px 20px;
     border: 3px solid #ff69b4;
     border-radius: 20px;
@@ -110,7 +115,34 @@ input, select, button {
     font-weight: bold;
 }
 
-input:focus, select:focus {
+textarea {
+    resize: vertical;
+    min-height: 80px;
+    line-height: 1.4;
+}
+
+/* Make emojis bigger throughout the interface */
+.controls button {
+    font-size: 24px;
+}
+
+.controls label {
+    font-size: 22px;
+}
+
+.progress-indicator {
+    font-size: 22px;
+}
+
+.header h1 {
+    font-size: 3.5em;
+}
+
+.header p {
+    font-size: 1.6em;
+}
+
+input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: #ff1493;
     box-shadow: 0 0 15px rgba(255, 20, 147, 0.3);
@@ -122,7 +154,7 @@ button {
     border: 3px solid #ff1493;
     cursor: pointer;
     font-weight: bold;
-    font-size: 20px;
+    font-size: 28px;
     transition: all 0.3s;
     min-height: 60px;
     min-width: 120px;
@@ -366,7 +398,7 @@ button:disabled {
 .prev-button {
     background: linear-gradient(135deg, #4169e1 0%, #0000cd 100%);
     border: 3px solid #0000cd;
-    font-size: 24px;
+    font-size: 32px;
     min-width: 150px;
     min-height: 70px;
     animation: prevButtonPulse 2s infinite;
@@ -381,7 +413,7 @@ button:disabled {
 .next-button {
     background: linear-gradient(135deg, #32cd32 0%, #228b22 100%);
     border: 3px solid #228b22;
-    font-size: 24px;
+    font-size: 32px;
     min-width: 150px;
     min-height: 70px;
     animation: nextButtonPulse 2s infinite;
@@ -396,7 +428,7 @@ button:disabled {
 .replay-button {
     background: linear-gradient(135deg, #ffa500 0%, #ff8c00 100%);
     border: 3px solid #ff8c00;
-    font-size: 24px;
+    font-size: 32px;
     min-width: 150px;
     min-height: 70px;
     animation: replayButtonPulse 2s infinite;
@@ -514,6 +546,10 @@ button:disabled {
     
     .controls {
         flex-direction: column;
+    }
+    
+    .story-input-group {
+        min-width: 100%;
     }
     
     .story-text {
