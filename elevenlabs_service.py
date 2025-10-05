@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import base64
 import json
+import time
 from typing import Optional, Dict, Any, AsyncGenerator, List
 from dotenv import load_dotenv
 
@@ -280,34 +281,57 @@ class ElevenLabsService:
             }
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                response = await client.post(
-                    f"{self.api_url}/{self.voice_id}",
-                    json=request_body,
-                    headers={
-                        "Accept": "audio/mpeg",
-                        "Content-Type": "application/json",
-                        "xi-api-key": self.api_key
-                    }
-                )
-                
-                if response.status_code != 200:
-                    self.logger.error(f"ElevenLabs API error for word '{word}': {response.status_code} - {response.text}")
-                    raise Exception(f"ElevenLabs API returned status {response.status_code}: {response.text}")
-                
-                response.raise_for_status()
-                
-                self.logger.info(f"Successfully generated audio for word '{word}', size: {len(response.content)} bytes")
-                return response.content
-                
-            except httpx.HTTPError as e:
-                self.logger.error(f"HTTP error calling ElevenLabs API for word '{word}': {str(e)}")
-                raise Exception(f"ElevenLabs API error for word '{word}': {str(e)}")
-            except Exception as e:
-                self.logger.error(f"Unexpected error generating audio for word '{word}': {str(e)}", exc_info=True)
-                raise Exception(f"Unexpected error for word '{word}': {str(e)}")
-    
+        max_retries = 5
+        base_delay = 1.0  # 1 second
+        
+        for attempt in range(max_retries):
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                try:
+                    response = await client.post(
+                        f"{self.api_url}/{self.voice_id}",
+                        json=request_body,
+                        headers={
+                            "Accept": "audio/mpeg",
+                            "Content-Type": "application/json",
+                            "xi-api-key": self.api_key
+                        }
+                    )
+                    
+                    if response.status_code == 200:
+                        self.logger.info(f"Successfully generated audio for word '{word}', size: {len(response.content)} bytes")
+                        return response.content
+                    
+                    # Retry on specific server errors
+                    if response.status_code == 429 or response.status_code >= 500:
+                        self.logger.warning(
+                            f"ElevenLabs API returned status {response.status_code} for word '{word}'. "
+                            f"Attempt {attempt + 1}/{max_retries}. Retrying in {base_delay}s..."
+                        )
+                        await asyncio.sleep(base_delay)
+                        base_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        # For other client-side errors, fail immediately
+                        self.logger.error(f"ElevenLabs API error for word '{word}': {response.status_code} - {response.text}")
+                        raise Exception(f"ElevenLabs API returned status {response.status_code}: {response.text}")
+
+                except httpx.HTTPError as e:
+                    self.logger.error(f"HTTP error calling ElevenLabs API for word '{word}' on attempt {attempt + 1}: {str(e)}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(base_delay)
+                        base_delay *= 2
+                    else:
+                        raise Exception(f"ElevenLabs API error for word '{word}' after {max_retries} attempts: {str(e)}")
+                except Exception as e:
+                    self.logger.error(f"Unexpected error for word '{word}' on attempt {attempt + 1}: {str(e)}", exc_info=True)
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(base_delay)
+                        base_delay *= 2
+                    else:
+                        raise Exception(f"Unexpected error for word '{word}' after {max_retries} attempts: {str(e)}")
+        
+        raise Exception(f"Failed to generate audio for word '{word}' after {max_retries} attempts.")
+
     async def text_to_speech(self, text: str, model_id: str = "eleven_multilingual_v2") -> bytes:
         """
         Convert text to speech using ElevenLabs API or cache
