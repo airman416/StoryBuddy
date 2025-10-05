@@ -2,7 +2,7 @@ const { useState, useEffect, useRef } = React;
 
 // StoryInput Component - simplified for young children
 function StoryInput({ onGenerate, isGenerating }) {
-  const [prompt, setPrompt] = useState("A happy cat plays with a ball");
+  const [prompt, setPrompt] = useState("A brave mouse goes on an adventure");
 
   const handleSubmit = () => {
     if (prompt.trim()) {

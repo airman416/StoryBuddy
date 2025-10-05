@@ -59,15 +59,21 @@ class GeminiService:
             self.logger.info(f"Debug story generated: {story[:100]}...")
             return story
         
-        formatted_prompt = f"""Create a very short, engaging story for children aged {age_group} about: {prompt}. 
+        formatted_prompt = f"""Create an engaging story for children aged {age_group} about: {prompt}. 
 
 Requirements:
+- Create a REAL PLOT with a clear story structure:
+  * Beginning: Introduce a character and their world
+  * Problem/Challenge: Something goes wrong or character wants something
+  * Journey: Character takes action, faces obstacles or makes discoveries
+  * Resolution: Problem is solved in a satisfying way
+  * Ending: Character learns something or gains something meaningful
 - Use simple, age-appropriate vocabulary
-- Keep it to 2-3 sentences maximum (much shorter)
-- Make it educational and fun
-- Include descriptive but simple language
-- End with a positive message
-- Focus on one main character and one simple event
+- Keep it to 3-5 sentences total
+- Make it emotionally engaging with stakes that matter to the character
+- Include vivid but simple descriptive language
+- Create a memorable character with personality
+- End with a positive, meaningful message about friendship, bravery, kindness, or discovery
 - DO NOT use any emojis in the story text - use only plain text words
 - Keep the language simple and clear without any special characters
 
@@ -80,8 +86,8 @@ Story:"""
                 }]
             }],
             "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 1000,
+                "temperature": 0.8,
+                "maxOutputTokens": 2000,
             }
         }
 
