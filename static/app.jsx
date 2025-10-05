@@ -1,53 +1,49 @@
 const { useState, useEffect, useRef } = React;
 
-// StoryInput Component
+// StoryInput Component - simplified for young children
 function StoryInput({ onGenerate, isGenerating }) {
-  const [prompt, setPrompt] = useState("A curious cat exploring a magical garden");
-  const [ageGroup, setAgeGroup] = useState("6-8");
+  const [prompt, setPrompt] = useState("A happy cat plays with a ball");
 
   const handleSubmit = () => {
     if (prompt.trim()) {
-      onGenerate(prompt, ageGroup);
+      onGenerate(prompt, "3-4");
     }
   };
 
   return (
-    <div className="controls">
-      <div className="input-group story-input-group">
-        <label htmlFor="storyPrompt">📖 Story Idea</label>
-        <textarea
-          id="storyPrompt"
-          placeholder="A brave little mouse..."
-          rows="3"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && e.ctrlKey) {
-              handleSubmit();
-            }
-          }}
-        />
-      </div>
-      
-      <div className="input-group">
-        <label htmlFor="ageGroup">👶 Age</label>
-        <select
-          id="ageGroup"
-          value={ageGroup}
-          onChange={(e) => setAgeGroup(e.target.value)}
-        >
-          <option value="4-6">4-6 👶</option>
-          <option value="6-8">6-8 🧒</option>
-          <option value="8-10">8-10 👦</option>
-        </select>
-      </div>
+    <div className="story-controls">
+      <textarea
+        className="story-input"
+        placeholder="What story? 🐱🐶🐰"
+        rows="2"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+      />
       
       <button
+        className="create-button"
         onClick={handleSubmit}
         disabled={isGenerating}
       >
-        {isGenerating ? '✨ Creating...' : '✨ Create Story'}
+        {isGenerating ? '⏳' : '✨'}
       </button>
+    </div>
+  );
+}
+
+// EmojiDisplay Component - now supports multiple emojis
+function EmojiDisplay({ emojis }) {
+  if (!emojis || emojis.length === 0) return null;
+
+  return (
+    <div className="emoji-display">
+      <div className="emoji-content">
+        {emojis.map((emoji, idx) => (
+          <span key={idx} className="emoji-item" style={{ margin: '0 10px' }}>
+            {emoji}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -82,8 +78,6 @@ function WordWindow({ words, currentIndexInWindow }) {
 function PlaybackControls({
   isPlaying,
   showControls,
-  currentWordIndex,
-  totalWords,
   onPlay,
   onPause,
   onPrevious,
@@ -92,18 +86,8 @@ function PlaybackControls({
 }) {
   if (!showControls) return null;
 
-  const currentSet = Math.floor(currentWordIndex / 5) + 1;
-  const totalSets = Math.ceil(totalWords / 5);
-  const remainingWords = totalWords - currentWordIndex;
-
   return (
     <div className="progress-controls">
-      <div className="progress-indicator">
-        {currentWordIndex >= totalWords 
-          ? '🎉 All done!'
-          : `📖 Set ${currentSet}/${totalSets} - ${remainingWords} words left`
-        }
-      </div>
       <div className="main-controls">
         <button onClick={onPrevious} className="prev-button">⬅️</button>
         
@@ -116,17 +100,6 @@ function PlaybackControls({
         <button onClick={onReplay} className="replay-button">🔄</button>
         <button onClick={onNext} className="next-button">➡️</button>
       </div>
-    </div>
-  );
-}
-
-// Feedback Component
-function Feedback({ message, type }) {
-  if (!message) return null;
-
-  return (
-    <div className={`feedback ${type}`}>
-      {message}
     </div>
   );
 }
@@ -145,6 +118,7 @@ function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [generatedSets, setGeneratedSets] = useState(new Set());
   const [requestedSets, setRequestedSets] = useState(new Set());
+  const [currentEmojis, setCurrentEmojis] = useState([]);
   
   const wsRef = useRef(null);
   const currentAudioRef = useRef(null);
@@ -176,7 +150,6 @@ function App() {
       
       ws.onopen = () => {
         console.log('WebSocket connected');
-        showFeedbackMessage('🎵 Connected for streaming audio!', 'success');
       };
       
       ws.onmessage = (event) => {
@@ -210,7 +183,6 @@ function App() {
         console.log(`Story set with ${message.total_words} words`);
         setStreamingWords(new Array(message.total_words).fill(null));
         streamingWordsRef.current = new Array(message.total_words).fill(null);
-        showFeedbackMessage(`📖 Story ready! Generating audio on demand...`, 'success');
         
         // Request the first set (set 0) immediately
         requestSetIfNeeded(0);
@@ -306,7 +278,6 @@ function App() {
       isPlayingRef.current = false;
       // Keep the index at the last word of the completed set
       setCurrentWordIndex(wordIndex - 1);
-      showFeedbackMessage('🎉 Set complete! Click ➡️ for next or 🔄 to replay!', 'success');
       return;
     }
     
@@ -314,7 +285,6 @@ function App() {
     if (wordIndex >= wordsList.length) {
       setIsPlaying(false);
       isPlayingRef.current = false;
-      showFeedbackMessage('🎉 Story finished!', 'success');
       return;
     }
 
@@ -377,11 +347,45 @@ function App() {
   };
 
   const showFeedbackMessage = (message, type) => {
-    setFeedback({ message, type });
-    setTimeout(() => {
-      setFeedback({ message: '', type: '' });
-    }, 5000);
+    // No feedback messages for young children
   };
+
+  const fetchEmojiForCurrentWindow = async (windowWords) => {
+    if (windowWords.length === 0) return;
+    
+    const wordsText = windowWords.join(' ');
+    try {
+      const response = await fetch('/api/generate-emoji', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ words: wordsText })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Parse multiple emojis from response
+        const emojiString = data.emoji || '📖🌟✨';
+        // Extract all emojis using regex (handles most emoji ranges including combined emojis)
+        const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}-\u{2454}\u{20D0}-\u{20FF}]+/gu;
+        const matches = emojiString.match(emojiRegex) || ['📖', '🌟', '✨'];
+        // Split into individual emojis (handling combined emojis)
+        const emojis = matches.join('').match(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}](?:\u{FE0F})?(?:\u{200D}[\u{1F000}-\u{1FFFF}](?:\u{FE0F})?)*|[\u{2600}-\u{27BF}]/gu) || ['📖', '🌟', '✨'];
+        setCurrentEmojis(emojis.slice(0, 5)); // Limit to 5 emojis max
+      }
+    } catch (error) {
+      console.error('Error fetching emoji:', error);
+      setCurrentEmojis(['📖']);
+    }
+  };
+
+  // Update emoji when window changes
+  useEffect(() => {
+    if (words.length > 0 && showControls) {
+      const windowStart = Math.floor(currentWordIndex / 5) * 5;
+      const windowWords = words.slice(windowStart, windowStart + 5);
+      fetchEmojiForCurrentWindow(windowWords);
+    }
+  }, [Math.floor(currentWordIndex / 5), words.length, showControls]);
 
   const handleGenerate = async (prompt, ageGroup) => {
     setIsGenerating(true);
@@ -413,8 +417,6 @@ function App() {
       setWords(storyWords);
       setShowControls(true);
       
-      showFeedbackMessage('Story created! Loading first set... 🎉', 'success');
-      
       // Send story to WebSocket for on-demand generation
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
@@ -428,7 +430,6 @@ function App() {
       
     } catch (error) {
       console.error('Error generating story:', error);
-      showFeedbackMessage('Error creating story. Please try again.', 'error');
     }
     
     setIsGenerating(false);
@@ -449,8 +450,6 @@ function App() {
       const data = await response.json();
       setWordAudioList(data.word_audio_list);
       
-      showFeedbackMessage(`🎵 Audio ready! ${data.word_audio_list.length} words generated!`, 'success');
-      
       // Auto-start playback from the beginning
       setCurrentWordIndex(0);
       setIsPlaying(true);
@@ -461,7 +460,6 @@ function App() {
       }, 100);
     } catch (error) {
       console.error('Error generating audio:', error);
-      showFeedbackMessage('Error generating audio.', 'error');
     }
   };
 
@@ -494,14 +492,12 @@ function App() {
       isPlayingRef.current = false;
       // Keep the index at the last word of the completed set
       setCurrentWordIndex(wordIndex - 1);
-      showFeedbackMessage('🎉 Set complete! Click ➡️ for next or 🔄 to replay!', 'success');
       return;
     }
     
     if (wordIndex >= audioList.length) {
       setIsPlaying(false);
       isPlayingRef.current = false;
-      showFeedbackMessage('🎉 Story finished!', 'success');
       return;
     }
 
@@ -553,14 +549,11 @@ function App() {
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
     }
-    
-    showFeedbackMessage('Paused ⏸️', 'success');
   };
 
   const handlePrevious = () => {
     const prevSetStart = Math.floor(currentWordIndex / 5) * 5 - 5;
     if (prevSetStart < 0) {
-      showFeedbackMessage('Already at the beginning! 🎯', 'success');
       return;
     }
     
@@ -584,8 +577,6 @@ function App() {
         playNextWord(prevSetStart, wordAudioList, prevSetStart);
       }
     }, 100);
-    
-    showFeedbackMessage('⬅️ Playing previous 5 words!', 'success');
   };
 
   const handleNext = () => {
@@ -603,7 +594,6 @@ function App() {
     }
     
     if (nextSetStart >= words.length) {
-      showFeedbackMessage('No more words! Story is complete! 🎉', 'success');
       return;
     }
     
@@ -627,8 +617,6 @@ function App() {
         playNextWord(nextSetStart, wordAudioList, nextSetStart);
       }
     }, 100);
-    
-    showFeedbackMessage('➡️ Playing next 5 words!', 'success');
   };
 
   const handleReplay = () => {
@@ -653,8 +641,6 @@ function App() {
         playNextWord(replayStart, wordAudioList, replayStart);
       }
     }, 100);
-    
-    showFeedbackMessage('🔄 Replaying current 5 words!', 'success');
   };
 
   // Calculate window words for display
@@ -665,14 +651,15 @@ function App() {
   return (
     <div className="container">
       <div className="header">
-        <h1>🌟 Story Magic 🌟</h1>
-        <p>Let's read together and have fun! 🎉</p>
+        <h1>✨ Story Magic ✨</h1>
       </div>
 
       <StoryInput 
         onGenerate={handleGenerate}
         isGenerating={isGenerating}
       />
+
+      <EmojiDisplay emojis={currentEmojis} />
 
       <WordWindow 
         words={windowWords}
@@ -682,18 +669,11 @@ function App() {
       <PlaybackControls
         isPlaying={isPlaying}
         showControls={showControls}
-        currentWordIndex={currentWordIndex}
-        totalWords={words.length}
         onPlay={handlePlay}
         onPause={handlePause}
         onPrevious={handlePrevious}
         onNext={handleNext}
         onReplay={handleReplay}
-      />
-
-      <Feedback 
-        message={feedback.message}
-        type={feedback.type}
       />
     </div>
   );

@@ -68,8 +68,8 @@ Requirements:
 - Include descriptive but simple language
 - End with a positive message
 - Focus on one main character and one simple event
-- Use emojis throughout the story to make it more engaging and fun
-- Add emojis for characters, actions, emotions, and objects
+- DO NOT use any emojis in the story text - use only plain text words
+- Keep the language simple and clear without any special characters
 
 Story:"""
 
@@ -265,3 +265,266 @@ Feedback:"""
         
         # Extract the text from parts
         return content["parts"][0]["text"].strip()
+    
+    async def generate_emoji_for_words(self, words: str) -> str:
+        """
+        Generate multiple emojis (3-5) that represent the given words
+        
+        Args:
+            words: The text to generate emojis for
+            
+        Returns:
+            A string of multiple emoji characters (3-5) that represent the words
+        """
+        if not self.is_configured():
+            return "📖🌟✨"  # Default fallback emojis
+        
+        self.logger.info(f"Generating emojis for words: '{words}'")
+        
+        # Use debug mode if enabled
+        if self.debug_mode:
+            self.logger.info("Using debug mode - keyword-based emoji selection")
+            return self._get_keyword_based_emojis(words)
+        
+        prompt = f"""Look at these exact words from a children's story: "{words}"
+
+Task: Generate 3-5 emojis that directly represent what is happening in these specific words.
+- Be specific to the actual nouns, verbs, and actions mentioned
+- If animals are mentioned, use those animal emojis
+- If actions are mentioned (running, jumping, playing), use action emojis
+- If objects are mentioned, use those object emojis
+- Match the mood and specific details of these words
+
+Return ONLY the emoji characters directly, no spaces, no text, no explanations.
+Example: For "cat played ball" return: 🐱⚽😸
+Example: For "sun shone bright" return: ☀️✨🌞"""
+
+        request_body = {
+            "contents": [{
+                "parts": [{
+                    "text": prompt
+                }]
+            }],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 20,
+            }
+        }
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.post(
+                    f"{self.api_url}?key={self.api_key}",
+                    json=request_body,
+                    headers={"Content-Type": "application/json"}
+                )
+                
+                if response.status_code != 200:
+                    self.logger.error(f"Gemini API error for emoji: {response.status_code}")
+                    self.logger.error(f"Response content: {response.text}")
+                    self.logger.info("Using keyword-based emoji generation as fallback")
+                    return self._get_keyword_based_emojis(words)
+                
+                data = response.json()
+                self.logger.debug(f"API response received: {data}")
+                
+                # Check for safety blocks or errors
+                if "error" in data:
+                    self.logger.error(f"API returned error: {data['error']}")
+                    self.logger.info("Using keyword-based emoji generation as fallback")
+                    return self._get_keyword_based_emojis(words)
+                
+                emoji = self._extract_emoji_from_response(data)
+                
+                # If extraction failed, use keyword-based fallback
+                if emoji is None:
+                    self.logger.info("API response incomplete, using keyword-based emoji generation")
+                    emoji = self._get_keyword_based_emojis(words)
+                
+                self.logger.info(f"Generated emojis: {emoji}")
+                return emoji
+                
+            except Exception as e:
+                self.logger.error(f"Error generating emojis: {str(e)}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+                self.logger.info("Using keyword-based emoji generation as fallback")
+                return self._get_keyword_based_emojis(words)
+    
+    def _get_keyword_based_emojis(self, words: str) -> str:
+        """Get emojis based on keyword matching as fallback"""
+        words_lower = words.lower()
+        emojis = []
+        
+        # Animals
+        if any(word in words_lower for word in ['cat', 'cats', 'kitten', 'kitty', 'meow', 'feline']):
+            emojis.extend(['🐱', '😺'])
+        if any(word in words_lower for word in ['dog', 'dogs', 'puppy', 'pup', 'woof', 'bark']):
+            emojis.extend(['🐶', '🐕'])
+        if any(word in words_lower for word in ['bird', 'birds', 'fly', 'wing', 'tweet']):
+            emojis.extend(['🐦', '🕊️'])
+        if any(word in words_lower for word in ['fish', 'swim', 'ocean', 'sea']):
+            emojis.extend(['🐠', '🐟'])
+        if any(word in words_lower for word in ['bunny', 'rabbit', 'hop']):
+            emojis.extend(['🐰', '🐇'])
+        if any(word in words_lower for word in ['bear', 'teddy']):
+            emojis.extend(['🐻', '🧸'])
+        if any(word in words_lower for word in ['elephant']):
+            emojis.extend(['🐘'])
+        if any(word in words_lower for word in ['lion', 'roar']):
+            emojis.extend(['🦁'])
+        if any(word in words_lower for word in ['tiger']):
+            emojis.extend(['🐯'])
+        if any(word in words_lower for word in ['monkey', 'ape']):
+            emojis.extend(['🐵', '🐒'])
+        if any(word in words_lower for word in ['mouse', 'mice', 'rat']):
+            emojis.extend(['🐭', '🐁'])
+        
+        # Nature & Weather
+        if any(word in words_lower for word in ['sun', 'sunny', 'bright', 'shine', 'shone', 'shining']):
+            emojis.extend(['☀️', '🌞'])
+        if any(word in words_lower for word in ['moon', 'night', 'dark']):
+            emojis.extend(['🌙', '🌛'])
+        if any(word in words_lower for word in ['star', 'stars', 'twinkle']):
+            emojis.extend(['⭐', '✨'])
+        if any(word in words_lower for word in ['tree', 'trees', 'forest', 'wood']):
+            emojis.extend(['🌳', '🌲'])
+        if any(word in words_lower for word in ['flower', 'flowers', 'garden', 'bloom']):
+            emojis.extend(['🌸', '🌺'])
+        if any(word in words_lower for word in ['rain', 'rainy', 'wet']):
+            emojis.extend(['🌧️', '☔'])
+        if any(word in words_lower for word in ['cloud', 'cloudy']):
+            emojis.extend(['☁️', '⛅'])
+        if any(word in words_lower for word in ['rainbow']):
+            emojis.extend(['🌈'])
+        
+        # Emotions & Actions
+        if any(word in words_lower for word in ['happy', 'joy', 'smile', 'glad', 'excited']):
+            emojis.extend(['😊', '😄'])
+        if any(word in words_lower for word in ['sad', 'cry', 'tear']):
+            emojis.extend(['😢', '😭'])
+        if any(word in words_lower for word in ['love', 'heart', 'like', 'loved']):
+            emojis.extend(['❤️', '💖'])
+        if any(word in words_lower for word in ['play', 'playing', 'played', 'fun']):
+            emojis.extend(['🎮', '🎨'])
+        if any(word in words_lower for word in ['sleep', 'sleeping', 'tired', 'nap']):
+            emojis.extend(['😴', '💤'])
+        if any(word in words_lower for word in ['eat', 'eating', 'food', 'hungry']):
+            emojis.extend(['🍽️', '🍴'])
+        if any(word in words_lower for word in ['look', 'looking', 'see', 'saw', 'watch', 'watching', 'viewed']):
+            emojis.extend(['👀', '👁️'])
+        if any(word in words_lower for word in ['run', 'running', 'ran', 'race', 'fast']):
+            emojis.extend(['🏃', '💨'])
+        if any(word in words_lower for word in ['jump', 'jumping', 'jumped', 'leap']):
+            emojis.extend(['🤸', '⬆️'])
+        if any(word in words_lower for word in ['walk', 'walking', 'walked', 'stroll']):
+            emojis.extend(['🚶', '🐾'])
+        if any(word in words_lower for word in ['dance', 'dancing', 'danced']):
+            emojis.extend(['💃', '🕺'])
+        if any(word in words_lower for word in ['sing', 'singing', 'sang', 'song']):
+            emojis.extend(['🎤', '🎵'])
+        
+        # Objects
+        if any(word in words_lower for word in ['ball', 'balls']):
+            emojis.extend(['⚽', '🏀'])
+        if any(word in words_lower for word in ['book', 'books', 'read', 'story']):
+            emojis.extend(['📖', '📚'])
+        if any(word in words_lower for word in ['house', 'home']):
+            emojis.extend(['🏠', '🏡'])
+        if any(word in words_lower for word in ['car', 'cars', 'drive']):
+            emojis.extend(['🚗', '🚙'])
+        if any(word in words_lower for word in ['toy', 'toys']):
+            emojis.extend(['🧸', '🎲'])
+        
+        # Descriptive words for animals
+        if any(word in words_lower for word in ['fluffy', 'soft', 'fuzzy', 'furry']):
+            if not any(emoji in emojis for emoji in ['🐱', '😺', '🐶', '🐕']):
+                emojis.append('☁️')
+        if any(word in words_lower for word in ['big', 'large', 'giant', 'huge']):
+            emojis.append('📏')
+        if any(word in words_lower for word in ['small', 'tiny', 'little', 'mini']):
+            emojis.append('🐾')
+        if any(word in words_lower for word in ['pretty', 'beautiful', 'cute', 'adorable']):
+            emojis.append('✨')
+        if any(word in words_lower for word in ['brave', 'strong', 'hero']):
+            emojis.append('💪')
+        if any(word in words_lower for word in ['magic', 'magical', 'spell']):
+            emojis.append('✨')
+        if any(word in words_lower for word in ['friend', 'friends', 'buddy', 'pal']):
+            emojis.append('👫')
+        
+        # Return 3-5 emojis, or fallback if none found
+        if emojis:
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_emojis = []
+            for emoji in emojis:
+                if emoji not in seen:
+                    seen.add(emoji)
+                    unique_emojis.append(emoji)
+            return ''.join(unique_emojis[:5])  # Limit to 5 emojis
+        else:
+            return "📖🌟✨"
+    
+    def _extract_emoji_from_response(self, data: Dict[Any, Any]) -> str:
+        """Extract emojis from Gemini API response"""
+        import re
+        
+        try:
+            # Log the full response for debugging
+            self.logger.debug(f"Full API response: {data}")
+            
+            candidates = data.get("candidates", [])
+            if not candidates:
+                self.logger.error("No candidates found in response")
+                self.logger.error(f"Response structure: {data}")
+                return None  # Signal to use fallback
+            
+            candidate = candidates[0]
+            self.logger.debug(f"Candidate: {candidate}")
+            
+            # Check for finish reason (safety blocks, etc)
+            finish_reason = candidate.get("finishReason", "")
+            if finish_reason and finish_reason != "STOP":
+                self.logger.warning(f"API blocked response with reason: {finish_reason}")
+                return None  # Signal to use fallback
+            
+            content = candidate.get("content", {})
+            if not content or not isinstance(content, dict):
+                self.logger.error("No content found in candidate")
+                return None  # Signal to use fallback
+            
+            parts = content.get("parts", [])
+            if not parts:
+                self.logger.error("No parts found in content")
+                self.logger.error(f"Content structure: {content}")
+                return None  # Signal to use fallback
+            
+            text = parts[0].get("text", "").strip()
+            self.logger.info(f"Extracted text from response: '{text}'")
+            
+            if not text:
+                self.logger.error("Empty text in response")
+                return None  # Signal to use fallback
+            
+            # Extract only emoji characters using comprehensive pattern
+            emoji_pattern = r'[\U0001F300-\U0001F9FF\U00002600-\U000027BF\U0001F1E6-\U0001F1FF\U0001F600-\U0001F64F\U0001F680-\U0001F6FF]+'
+            emojis = ''.join(re.findall(emoji_pattern, text))
+            
+            if emojis:
+                self.logger.info(f"Successfully extracted emojis: {emojis}")
+                return emojis
+            else:
+                # If no emojis found with regex, return original text if it looks like emojis
+                if len(text) <= 30 and not text.isalpha():
+                    self.logger.info(f"Using original text as emojis: {text}")
+                    return text
+                else:
+                    self.logger.warning(f"No emojis found in text: '{text}'")
+                    return None  # Signal to use fallback
+                    
+        except Exception as e:
+            self.logger.error(f"Error extracting emojis: {str(e)}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            return None  # Signal to use fallback

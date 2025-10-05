@@ -5,24 +5,24 @@ Debug configuration file containing pre-defined stories and feedback for testing
 # Pre-defined stories for different age groups and prompts (very short versions for word-by-word testing)
 DEBUG_STORIES = {
     "adventure": {
-        "4-6": "Benny found a key. He opened a door. Benny made friends! 🌟",
-        "6-8": "Ember breathed bubbles. She found a crystal. Ember saved the kingdom! 🐉✨",
-        "8-10": "Alex built a bike. She helped a pharaoh. Alex got a scarab! ⚡🔧"
+        "4-6": "Benny found a key. He opened a door. Benny made friends!",
+        "6-8": "Ember breathed bubbles. She found a crystal. Ember saved the kingdom!",
+        "8-10": "Alex built a bike. She helped a pharaoh. Alex got a scarab!"
     },
     "friendship": {
-        "4-6": "Luna and Star were friends. Star's light helped Luna. They played together! 🌙✨",
-        "6-8": "Maya loved books. Jake loved soccer. They won the talent show! ⚽📚",
-        "8-10": "Emma met Marcus. They started a club. Their robot helped students! 🤖💙"
+        "4-6": "Luna and Star were friends. Star's light helped Luna. They played together!",
+        "6-8": "Maya loved books. Jake loved soccer. They won the talent show!",
+        "8-10": "Emma met Marcus. They started a club. Their robot helped students!"
     },
     "animals": {
-        "4-6": "Pip was small. He found fish. Pip became a hero! 🐧❄️",
-        "6-8": "Zara had silver stripes. She helped a baby elephant. Zara saved the day! 🦓🌞",
-        "8-10": "Kai had different eyes. He found water. Kai saved his pack! 🐺💧"
+        "4-6": "Pip was small. He found fish. Pip became a hero!",
+        "6-8": "Zara had silver stripes. She helped a baby elephant. Zara saved the day!",
+        "8-10": "Kai had different eyes. He found water. Kai saved his pack!"
     },
     "magic": {
-        "4-6": "Willow had sparkles. She found a teddy bear. Willow helped! ✨🧸",
-        "6-8": "Oliver found a crystal. It showed feelings. Oliver helped a friend! 🔮🌈",
-        "8-10": "Sophie talked to plants. She saved the forest. Sophie made a difference! 🌳🌿"
+        "4-6": "Willow had sparkles. She found a teddy bear. Willow helped!",
+        "6-8": "Oliver found a crystal. It showed feelings. Oliver helped a friend!",
+        "8-10": "Sophie talked to plants. She saved the forest. Sophie made a difference!"
     }
 }
 

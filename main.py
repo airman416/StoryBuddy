@@ -42,6 +42,9 @@ class ReadingEvalRequest(BaseModel):
     original_story: str
     spoken_text: str
 
+class EmojiRequest(BaseModel):
+    words: str
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -164,6 +167,18 @@ async def evaluate_reading(request: ReadingEvalRequest):
         logger.error(f"Error evaluating reading: {str(e)}")
         # Fallback to positive message if API fails
         return {"feedback": "Great job reading! Keep practicing! 🌟"}
+
+@app.post("/api/generate-emoji")
+async def generate_emoji(request: EmojiRequest):
+    """Generate an emoji for the given words"""
+    logger.info(f"Received emoji generation request for: {request.words}")
+    
+    try:
+        emoji = await gemini_service.generate_emoji_for_words(request.words)
+        return {"emoji": emoji}
+    except Exception as e:
+        logger.error(f"Error generating emoji: {str(e)}")
+        return {"emoji": "📖"}
 
 @app.websocket("/ws/stream-words")
 async def websocket_stream_words(websocket: WebSocket):
