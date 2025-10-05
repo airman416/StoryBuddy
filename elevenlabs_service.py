@@ -20,10 +20,10 @@ class ElevenLabsService:
         
         Args:
             api_key: ElevenLabs API key. If not provided, will load from environment
-            voice_id: Voice ID to use. If not provided, uses default Adam voice
+            voice_id: Voice ID to use. If not provided, uses default Bella voice (warm, gentle female voice)
         """
         self.api_key = api_key or os.getenv('ELEVENLABS_API_KEY')
-        self.voice_id = voice_id or 'JBFqnCBsd6RMkjVDRZzb'  # Adam voice from ElevenLabs docs
+        self.voice_id = voice_id or 'EXAVITQu4vr4xnSDxMaL'  # Bella voice - warm, gentle female voice suitable for children's stories
         self.api_url = 'https://api.elevenlabs.io/v1/text-to-speech'
         self.streaming_url = 'https://api.elevenlabs.io/v1/text-to-speech'
         self.logger = logging.getLogger(__name__)

@@ -179,6 +179,9 @@
                     // If this is the first word, start playing immediately
                     if (message.index === 0 && !isPlaying) {
                         startStreamingPlayback();
+                    } else if (isPlaying && isPlayingWordByWord && message.index === currentWordIndex) {
+                        // If we're waiting for this specific word, continue playing
+                        playNextStreamingWord();
                     }
                     break;
                     
@@ -190,6 +193,9 @@
                     // If we haven't started playing yet, start now
                     if (!isPlaying && streamingWords.length > 0) {
                         startStreamingPlayback();
+                    } else if (isPlaying && isPlayingWordByWord) {
+                        // If we're already playing but waiting for more words, continue playing
+                        playNextStreamingWord();
                     }
                     break;
                     
@@ -256,10 +262,15 @@
 
         // Play next word in streaming mode
         async function playNextStreamingWord() {
-            if (!isPlaying || currentWordIndex >= streamingWords.length) {
+            if (!isPlaying) {
+                return;
+            }
+            
+            if (currentWordIndex >= streamingWords.length) {
                 // Check if we're still generating more words
                 if (isStreaming) {
-                    // Wait for more words to be generated
+                    // Wait for more words to be generated - don't stop playing
+                    console.log(`Waiting for more words. Current: ${currentWordIndex}, Available: ${streamingWords.length}`);
                     return;
                 } else {
                     // Story finished
