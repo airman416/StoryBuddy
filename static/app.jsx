@@ -111,6 +111,7 @@ function ReadingPractice({
   isListening, 
   onStartListening,
   onStopListening,
+  onSkip,
   result 
 }) {
   return (
@@ -131,12 +132,20 @@ function ReadingPractice({
       
       <div className="practice-controls">
         {!isListening ? (
-          <button 
-            className="record-button" 
-            onClick={onStartListening}
-          >
-            🎤 Start Speaking
-          </button>
+          <>
+            <button 
+              className="record-button" 
+              onClick={onStartListening}
+            >
+              🎤 Start Speaking
+            </button>
+            <button 
+              className="skip-button" 
+              onClick={onSkip}
+            >
+              ⏭️ Skip
+            </button>
+          </>
         ) : (
           <button 
             className="done-button" 
@@ -837,6 +846,22 @@ function App() {
     }
   };
 
+  const handleSkip = () => {
+    // Hide reading practice and move to next set
+    const windowStart = Math.floor(currentWordIndex / 5) * 5;
+    const nextSetStart = windowStart + 5;
+    
+    if (nextSetStart < words.length) {
+      setShowReadingPractice(false);
+      setPracticeResult(null);
+      handleNext();
+    } else {
+      // If at the end, just hide the practice screen
+      setShowReadingPractice(false);
+      setPracticeResult(null);
+    }
+  };
+
   // Calculate window words for display
   const windowStart = Math.floor(currentWordIndex / 5) * 5;
   const windowWords = words.slice(windowStart, windowStart + 5);
@@ -879,6 +904,7 @@ function App() {
           isListening={isListening}
           onStartListening={handleStartListening}
           onStopListening={handleStopListening}
+          onSkip={handleSkip}
           result={practiceResult}
         />
       )}

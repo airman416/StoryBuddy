@@ -373,6 +373,15 @@ button:disabled {
     min-width: 250px;
 }
 
+.skip-button {
+    background: linear-gradient(135deg, #9E9E9E 0%, #757575 100%);
+    border-color: #616161;
+    font-size: 2em;
+    padding: 20px 40px;
+    min-height: 100px;
+    min-width: 200px;
+}
+
 .done-button {
     background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
     border-color: #2E7D32;
@@ -515,9 +524,9 @@ button:disabled {
         padding: 20px;
     }
     
-    .record-button, .done-button {
+    .record-button, .done-button, .skip-button {
         font-size: 1.5em;
-        min-width: 200px;
+        min-width: 180px;
         min-height: 80px;
     }
     
