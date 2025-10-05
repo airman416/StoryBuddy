@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
@@ -44,6 +44,10 @@ class ReadingEvalRequest(BaseModel):
 
 class EmojiRequest(BaseModel):
     words: str
+
+class SpeechCheckRequest(BaseModel):
+    original_text: str
+    audio_base64: str
 
 @app.get("/health")
 async def health_check():
@@ -179,6 +183,30 @@ async def generate_emoji(request: EmojiRequest):
     except Exception as e:
         logger.error(f"Error generating emoji: {str(e)}")
         return {"emoji": "📖"}
+
+@app.post("/api/check-speech")
+async def check_speech(request: SpeechCheckRequest):
+    """Check if child's speech matches the original text"""
+    logger.info(f"Received speech check request for text: {request.original_text}")
+    
+    try:
+        # Decode base64 audio
+        audio_data = base64.b64decode(request.audio_base64)
+        
+        # Convert speech to text
+        transcribed_text = await elevenlabs_service.speech_to_text(audio_data)
+        
+        # Calculate similarity
+        similarity = elevenlabs_service.calculate_text_similarity(request.original_text, transcribed_text)
+        
+        return {
+            "transcribed_text": transcribed_text,
+            "similarity": similarity,
+            "success": similarity >= 60
+        }
+    except Exception as e:
+        logger.error(f"Error checking speech: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.websocket("/ws/stream-words")
 async def websocket_stream_words(websocket: WebSocket):

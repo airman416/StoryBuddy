@@ -682,3 +682,142 @@ class ElevenLabsService:
         
         # Ensure at least 1 syllable
         return max(1, syllable_count)
+    
+    async def speech_to_text(self, audio_data: bytes, model_id: str = "scribe_v1") -> str:
+        """
+        Convert speech to text using ElevenLabs API
+        
+        Args:
+            audio_data: Audio data as bytes (MP3, WAV, WebM, etc.)
+            model_id: Model to use for STT (default: scribe_v1)
+                      Available models: 'scribe_v1', 'scribe_v1_experimental'
+            
+        Returns:
+            Transcribed text
+            
+        Raises:
+            Exception: If API call fails
+        """
+        if not self.is_configured():
+            raise Exception("ElevenLabs API key not configured. Please set ELEVENLABS_API_KEY in your .env file.")
+        
+        self.logger.info(f"Converting speech to text, audio size: {len(audio_data)} bytes")
+        
+        stt_url = "https://api.elevenlabs.io/v1/speech-to-text"
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                # Prepare multipart form data with model_id
+                files = {
+                    'file': ('audio.webm', audio_data, 'audio/webm')
+                }
+                
+                data = {
+                    'model_id': model_id
+                }
+                
+                response = await client.post(
+                    stt_url,
+                    files=files,
+                    data=data,
+                    headers={
+                        "xi-api-key": self.api_key
+                    }
+                )
+                
+                self.logger.info(f"ElevenLabs STT API response status: {response.status_code}")
+                
+                if response.status_code != 200:
+                    self.logger.error(f"ElevenLabs STT API error response: {response.status_code} - {response.text}")
+                    raise Exception(f"ElevenLabs STT API returned status {response.status_code}: {response.text}")
+                
+                response.raise_for_status()
+                
+                result = response.json()
+                transcribed_text = result.get('text', '')
+                
+                self.logger.info(f"Successfully transcribed speech: {transcribed_text}")
+                return transcribed_text
+                
+            except httpx.HTTPError as e:
+                self.logger.error(f"HTTP error calling ElevenLabs STT API: {str(e)}")
+                raise Exception(f"ElevenLabs STT API error: {str(e)}")
+            except Exception as e:
+                self.logger.error(f"Unexpected error in speech_to_text: {str(e)}", exc_info=True)
+                raise Exception(f"Unexpected error: {str(e)}")
+    
+    def calculate_text_similarity(self, text1: str, text2: str) -> float:
+        """
+        Calculate similarity between two texts using Levenshtein distance
+        Excludes punctuation and emojis for fair comparison
+        
+        Args:
+            text1: First text (original)
+            text2: Second text (spoken/transcribed)
+            
+        Returns:
+            Similarity score as percentage (0-100)
+        """
+        import re
+        import string
+        
+        # Normalize texts
+        text1 = text1.lower().strip()
+        text2 = text2.lower().strip()
+        
+        # Remove emojis using regex
+        emoji_pattern = re.compile(
+            r"[\U0001F600-\U0001F64F"  # emoticons
+            r"\U0001F300-\U0001F5FF"  # symbols & pictographs
+            r"\U0001F680-\U0001F6FF"  # transport & map symbols
+            r"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+            r"\U00002600-\U000026FF"  # miscellaneous symbols
+            r"\U00002700-\U000027BF"  # dingbats
+            r"\U0001F900-\U0001F9FF"  # supplemental symbols
+            r"\U0001FA70-\U0001FAFF"  # symbols and pictographs extended-A
+            r"]+",
+            flags=re.UNICODE
+        )
+        
+        text1 = emoji_pattern.sub('', text1)
+        text2 = emoji_pattern.sub('', text2)
+        
+        # Remove punctuation for better comparison
+        translator = str.maketrans('', '', string.punctuation)
+        text1 = text1.translate(translator)
+        text2 = text2.translate(translator)
+        
+        # Normalize whitespace (replace multiple spaces with single space)
+        text1 = ' '.join(text1.split())
+        text2 = ' '.join(text2.split())
+        
+        # Calculate Levenshtein distance
+        def levenshtein_distance(s1: str, s2: str) -> int:
+            if len(s1) < len(s2):
+                return levenshtein_distance(s2, s1)
+            
+            if len(s2) == 0:
+                return len(s1)
+            
+            previous_row = range(len(s2) + 1)
+            for i, c1 in enumerate(s1):
+                current_row = [i + 1]
+                for j, c2 in enumerate(s2):
+                    insertions = previous_row[j + 1] + 1
+                    deletions = current_row[j] + 1
+                    substitutions = previous_row[j] + (c1 != c2)
+                    current_row.append(min(insertions, deletions, substitutions))
+                previous_row = current_row
+            
+            return previous_row[-1]
+        
+        distance = levenshtein_distance(text1, text2)
+        max_len = max(len(text1), len(text2))
+        
+        if max_len == 0:
+            return 100.0
+        
+        similarity = (1 - distance / max_len) * 100
+        
+        self.logger.info(f"Text similarity: {similarity:.2f}% (normalized: '{text1}' vs '{text2}')")
+        return similarity

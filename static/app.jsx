@@ -104,6 +104,68 @@ function PlaybackControls({
   );
 }
 
+// ReadingPractice Component
+function ReadingPractice({ 
+  windowWords, 
+  onRecordingComplete, 
+  isListening, 
+  onStartListening,
+  onStopListening,
+  result 
+}) {
+  return (
+    <div className="reading-practice">
+      <h2 className="practice-title">🎤 Now you try!</h2>
+      <p className="practice-prompt">Repeat what you heard:</p>
+      
+      <div className="practice-text">
+        {windowWords.join(' ')}
+      </div>
+      
+      {isListening && (
+        <div className="listening-indicator">
+          <div className="listening-pulse"></div>
+          <span>🎧 Listening...</span>
+        </div>
+      )}
+      
+      <div className="practice-controls">
+        {!isListening ? (
+          <button 
+            className="record-button" 
+            onClick={onStartListening}
+          >
+            🎤 Start Speaking
+          </button>
+        ) : (
+          <button 
+            className="done-button" 
+            onClick={onStopListening}
+          >
+            ✅ Done
+          </button>
+        )}
+      </div>
+      
+      {result && (
+        <div className={`practice-result ${result.success ? 'success' : 'retry'}`}>
+          {result.success ? (
+            <div className="success-message">
+              <span className="success-icon">⭐</span>
+              <p>Great job!</p>
+            </div>
+          ) : (
+            <div className="retry-message">
+              <span className="retry-icon">🔄</span>
+              <p>Try again!</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Main App Component
 function App() {
   const [story, setStory] = useState('');
@@ -119,6 +181,9 @@ function App() {
   const [generatedSets, setGeneratedSets] = useState(new Set());
   const [requestedSets, setRequestedSets] = useState(new Set());
   const [currentEmojis, setCurrentEmojis] = useState([]);
+  const [showReadingPractice, setShowReadingPractice] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [practiceResult, setPracticeResult] = useState(null);
   
   const wsRef = useRef(null);
   const currentAudioRef = useRef(null);
@@ -126,6 +191,8 @@ function App() {
   const streamingWordsRef = useRef([]);
   const generatedSetsRef = useRef(new Set());
   const requestedSetsRef = useRef(new Set());
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -278,6 +345,9 @@ function App() {
       isPlayingRef.current = false;
       // Keep the index at the last word of the completed set
       setCurrentWordIndex(wordIndex - 1);
+      // Show reading practice prompt
+      setShowReadingPractice(true);
+      setPracticeResult(null);
       return;
     }
     
@@ -492,6 +562,9 @@ function App() {
       isPlayingRef.current = false;
       // Keep the index at the last word of the completed set
       setCurrentWordIndex(wordIndex - 1);
+      // Show reading practice prompt
+      setShowReadingPractice(true);
+      setPracticeResult(null);
       return;
     }
     
@@ -627,6 +700,10 @@ function App() {
       currentAudioRef.current.pause();
     }
     
+    // Hide reading practice when replaying
+    setShowReadingPractice(false);
+    setPracticeResult(null);
+    
     // Ensure current set is loaded
     ensureSetsLoaded(currentSet);
     
@@ -641,6 +718,123 @@ function App() {
         playNextWord(replayStart, wordAudioList, replayStart);
       }
     }, 100);
+  };
+
+  const handleStartListening = async () => {
+    try {
+      // Check if browser supports MediaDevices API
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('MediaDevices API not supported');
+        alert('Your browser does not support microphone access. Please use a modern browser like Chrome, Firefox, or Safari.');
+        return;
+      }
+
+      // Check if running on secure context (HTTPS or localhost)
+      if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        console.error('Microphone access requires HTTPS');
+        alert('Microphone access requires a secure connection (HTTPS). Please access the app via HTTPS or localhost.');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Check if MediaRecorder is supported
+      if (!window.MediaRecorder) {
+        console.error('MediaRecorder not supported');
+        alert('Your browser does not support audio recording. Please use a modern browser like Chrome, Firefox, or Safari.');
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      
+      const mediaRecorder = new MediaRecorder(stream);
+      
+      audioChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        await handleRecordingComplete(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsListening(true);
+      
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        alert('Microphone access denied. Please allow microphone access in your browser settings and try again.');
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        alert('No microphone found. Please connect a microphone and try again.');
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        alert('Microphone is already in use by another application. Please close other apps using the microphone and try again.');
+      } else {
+        alert('Could not access microphone. Please check permissions and try again. Error: ' + error.message);
+      }
+    }
+  };
+
+  const handleStopListening = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setIsListening(false);
+    }
+  };
+
+  const handleRecordingComplete = async (audioBlob) => {
+    try {
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      
+      reader.onloadend = async () => {
+        const base64Audio = reader.result.split(',')[1];
+        
+        // Get the current window words
+        const windowStart = Math.floor(currentWordIndex / 5) * 5;
+        const windowWords = words.slice(windowStart, windowStart + 5);
+        const originalText = windowWords.join(' ');
+        
+        // Send to backend
+        const response = await fetch('/api/check-speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            original_text: originalText,
+            audio_base64: base64Audio
+          })
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          setPracticeResult(result);
+          
+          // If successful and not at the end, auto-advance to next set after 2 seconds
+          if (result.success) {
+            setTimeout(() => {
+              const nextSetStart = windowStart + 5;
+              if (nextSetStart < words.length) {
+                setShowReadingPractice(false);
+                handleNext();
+              }
+            }, 2000);
+          }
+        } else {
+          console.error('Error checking speech:', response.statusText);
+          setPracticeResult({ success: false, similarity: 0, transcribed_text: '' });
+        }
+      };
+    } catch (error) {
+      console.error('Error processing recording:', error);
+      setPracticeResult({ success: false, similarity: 0, transcribed_text: '' });
+    }
   };
 
   // Calculate window words for display
@@ -661,20 +855,33 @@ function App() {
 
       <EmojiDisplay emojis={currentEmojis} />
 
-      <WordWindow 
-        words={windowWords}
-        currentIndexInWindow={currentWordInWindow}
-      />
+      {!showReadingPractice ? (
+        <>
+          <WordWindow 
+            words={windowWords}
+            currentIndexInWindow={currentWordInWindow}
+          />
 
-      <PlaybackControls
-        isPlaying={isPlaying}
-        showControls={showControls}
-        onPlay={handlePlay}
-        onPause={handlePause}
-        onPrevious={handlePrevious}
-        onNext={handleNext}
-        onReplay={handleReplay}
-      />
+          <PlaybackControls
+            isPlaying={isPlaying}
+            showControls={showControls}
+            onPlay={handlePlay}
+            onPause={handlePause}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
+            onReplay={handleReplay}
+          />
+        </>
+      ) : (
+        <ReadingPractice
+          windowWords={windowWords}
+          onRecordingComplete={handleRecordingComplete}
+          isListening={isListening}
+          onStartListening={handleStartListening}
+          onStopListening={handleStopListening}
+          result={practiceResult}
+        />
+      )}
     </div>
   );
 }
