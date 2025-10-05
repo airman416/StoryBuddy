@@ -167,17 +167,20 @@ async def evaluate_reading(request: ReadingEvalRequest):
 
 @app.websocket("/ws/stream-words")
 async def websocket_stream_words(websocket: WebSocket):
-    """WebSocket endpoint for streaming word-by-word audio generation"""
+    """WebSocket endpoint for streaming word-by-word audio generation on-demand"""
     await websocket.accept()
     logger.info("WebSocket connection established for streaming words")
     
+    story_words = []
+    
     try:
         while True:
-            # Wait for client to send story text
+            # Wait for client to send request
             data = await websocket.receive_text()
             message = json.loads(data)
             
-            if message.get("type") == "generate_story":
+            if message.get("type") == "set_story":
+                # Store the story words for on-demand generation
                 story_text = message.get("text", "")
                 if not story_text:
                     await websocket.send_text(json.dumps({
@@ -186,17 +189,41 @@ async def websocket_stream_words(websocket: WebSocket):
                     }))
                     continue
                 
-                logger.info(f"Starting streaming word generation for story: {story_text[:100]}...")
+                story_words = story_text.split()
+                logger.info(f"Story set with {len(story_words)} words")
+                
+                # Send confirmation
+                await websocket.send_text(json.dumps({
+                    "type": "story_set",
+                    "total_words": len(story_words)
+                }))
+                
+            elif message.get("type") == "generate_set":
+                # Generate audio for a specific set of words (5 words)
+                set_index = message.get("set_index", 0)
+                start_index = set_index * 5
+                end_index = min(start_index + 5, len(story_words))
+                
+                if start_index >= len(story_words):
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": f"Set index {set_index} out of bounds"
+                    }))
+                    continue
+                
+                logger.info(f"Generating set {set_index} (words {start_index}-{end_index-1})")
                 
                 # Send start message
                 await websocket.send_text(json.dumps({
-                    "type": "generation_started",
-                    "total_words": len(story_text.split())
+                    "type": "set_generation_started",
+                    "set_index": set_index,
+                    "start_index": start_index,
+                    "end_index": end_index
                 }))
                 
-                # Generate words one by one and stream them
-                words = story_text.split()
-                for i, word in enumerate(words):
+                # Generate words for this set
+                for i in range(start_index, end_index):
+                    word = story_words[i]
                     try:
                         # Check if word is emoji (skip audio generation)
                         if elevenlabs_service._is_emoji(word):
@@ -248,7 +275,7 @@ async def websocket_stream_words(websocket: WebSocket):
                             }))
                         
                         # Small delay between words to prevent overwhelming the client
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(0.05)
                         
                     except Exception as e:
                         logger.error(f"Error generating word '{word}': {str(e)}")
@@ -260,10 +287,12 @@ async def websocket_stream_words(websocket: WebSocket):
                             "error": str(e)
                         }))
                 
-                # Send completion message
+                # Send completion message for this set
                 await websocket.send_text(json.dumps({
-                    "type": "generation_complete",
-                    "total_words": len(words)
+                    "type": "set_generation_complete",
+                    "set_index": set_index,
+                    "start_index": start_index,
+                    "end_index": end_index
                 }))
                 
             elif message.get("type") == "ping":

@@ -143,16 +143,28 @@ function App() {
   const [wordAudioList, setWordAudioList] = useState([]);
   const [streamingWords, setStreamingWords] = useState([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [generatedSets, setGeneratedSets] = useState(new Set());
+  const [requestedSets, setRequestedSets] = useState(new Set());
   
   const wsRef = useRef(null);
   const currentAudioRef = useRef(null);
   const isPlayingRef = useRef(false);
   const streamingWordsRef = useRef([]);
+  const generatedSetsRef = useRef(new Set());
+  const requestedSetsRef = useRef(new Set());
 
-  // Keep ref in sync with state
+  // Keep refs in sync with state
   useEffect(() => {
     streamingWordsRef.current = streamingWords;
   }, [streamingWords]);
+
+  useEffect(() => {
+    generatedSetsRef.current = generatedSets;
+  }, [generatedSets]);
+
+  useEffect(() => {
+    requestedSetsRef.current = requestedSets;
+  }, [requestedSets]);
 
   // Initialize WebSocket
   useEffect(() => {
@@ -194,12 +206,19 @@ function App() {
 
   const handleWebSocketMessage = (message) => {
     switch (message.type) {
-      case 'generation_started':
-        console.log(`Starting streaming generation of ${message.total_words} words`);
-        setStreamingWords([]);
-        streamingWordsRef.current = [];
+      case 'story_set':
+        console.log(`Story set with ${message.total_words} words`);
+        setStreamingWords(new Array(message.total_words).fill(null));
+        streamingWordsRef.current = new Array(message.total_words).fill(null);
+        showFeedbackMessage(`📖 Story ready! Generating audio on demand...`, 'success');
+        
+        // Request the first set (set 0) immediately
+        requestSetIfNeeded(0);
+        break;
+        
+      case 'set_generation_started':
+        console.log(`Starting generation of set ${message.set_index} (words ${message.start_index}-${message.end_index-1})`);
         setIsStreaming(true);
-        showFeedbackMessage(`🎵 Starting streaming generation of ${message.total_words} words...`, 'success');
         break;
         
       case 'word_ready':
@@ -230,16 +249,49 @@ function App() {
         });
         break;
         
-      case 'generation_complete':
-        console.log(`Streaming generation complete: ${message.total_words} words`);
+      case 'set_generation_complete':
+        console.log(`Set ${message.set_index} generation complete`);
+        setGeneratedSets(prev => {
+          const updated = new Set(prev);
+          updated.add(message.set_index);
+          return updated;
+        });
         setIsStreaming(false);
-        showFeedbackMessage(`🎉 All ${message.total_words} words generated!`, 'success');
         break;
         
       case 'word_error':
         console.error(`Error generating word ${message.index}: ${message.error}`);
         break;
     }
+  };
+
+  const requestSetIfNeeded = (setIndex) => {
+    // Check if set is already requested or generated
+    if (requestedSetsRef.current.has(setIndex) || generatedSetsRef.current.has(setIndex)) {
+      return;
+    }
+    
+    // Mark as requested
+    setRequestedSets(prev => {
+      const updated = new Set(prev);
+      updated.add(setIndex);
+      return updated;
+    });
+    
+    // Send request to websocket
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log(`Requesting set ${setIndex}`);
+      wsRef.current.send(JSON.stringify({
+        type: 'generate_set',
+        set_index: setIndex
+      }));
+    }
+  };
+
+  const ensureSetsLoaded = (currentSetIndex) => {
+    // Ensure current set and next set are loaded
+    requestSetIfNeeded(currentSetIndex);
+    requestSetIfNeeded(currentSetIndex + 1);
   };
 
   const playNextStreamingWordFromRef = async (wordIndex, startIndex) => {
@@ -338,6 +390,10 @@ function App() {
     setCurrentWordIndex(0);
     setStreamingWords([]);
     setWordAudioList([]);
+    setGeneratedSets(new Set());
+    setRequestedSets(new Set());
+    generatedSetsRef.current = new Set();
+    requestedSetsRef.current = new Set();
     
     try {
       const response = await fetch('/api/generate-story', {
@@ -357,12 +413,12 @@ function App() {
       setWords(storyWords);
       setShowControls(true);
       
-      showFeedbackMessage('Story created! Starting audio generation... 🎉', 'success');
+      showFeedbackMessage('Story created! Loading first set... 🎉', 'success');
       
-      // Start streaming audio generation via WebSocket
+      // Send story to WebSocket for on-demand generation
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
-          type: 'generate_story',
+          type: 'set_story',
           text: data.story
         }));
       } else {
@@ -414,6 +470,10 @@ function App() {
     isPlayingRef.current = true;
     
     const startIndex = Math.floor(currentWordIndex / 5) * 5;
+    const currentSet = Math.floor(currentWordIndex / 5);
+    
+    // Ensure current set and next set are loaded
+    ensureSetsLoaded(currentSet);
     
     if (streamingWords.length > 0) {
       playNextStreamingWordFromRef(currentWordIndex, startIndex);
@@ -508,6 +568,11 @@ function App() {
       currentAudioRef.current.pause();
     }
     
+    const prevSet = Math.floor(prevSetStart / 5);
+    
+    // Ensure previous set is loaded
+    ensureSetsLoaded(prevSet);
+    
     setCurrentWordIndex(prevSetStart);
     setIsPlaying(true);
     isPlayingRef.current = true;
@@ -546,6 +611,11 @@ function App() {
       currentAudioRef.current.pause();
     }
     
+    const nextSet = Math.floor(nextSetStart / 5);
+    
+    // Ensure next set and the one after are loaded
+    ensureSetsLoaded(nextSet);
+    
     setCurrentWordIndex(nextSetStart);
     setIsPlaying(true);
     isPlayingRef.current = true;
@@ -568,6 +638,9 @@ function App() {
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
     }
+    
+    // Ensure current set is loaded
+    ensureSetsLoaded(currentSet);
     
     setCurrentWordIndex(replayStart);
     setIsPlaying(true);
